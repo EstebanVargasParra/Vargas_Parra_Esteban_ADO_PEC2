@@ -1,0 +1,436 @@
+---
+title: "Vargas_Parra_Esteban_ADO_PEC2"
+author: "Esteban Vargas Parra"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    theme: united
+    toc: yes
+    toc_depth: 3
+urlcolor: blue
+header-includes:
+  - \usepackage{leading}
+  - \leading{15pt}
+editor_options: 
+  chunk_output_type: console
+bibliography: references.bib
+link-citations: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, message=FALSE}
+if(!require(BiocManager)) install.packages("BiocManager")
+if(!require(clusterProfiler)) BiocManager::install("clusterProfiler")
+if(!require(Rsamtools)) BiocManager::install("Rsamtools")
+if(!require(GenomicFeatures)) BiocManager::install("GenomicFeatures")
+if(!require(DESeq2)) BiocManager::install("DESeq2")
+if(!require(apeglm)) BiocManager::install("apeglm")
+if(!require(BiocParallel)) BiocManager::install("BiocParallel")
+if(!require(genefilter)) BiocManager::install("genefilter")
+if(!require(org.Hs.eg.db)) BiocManager::install("org.Hs.eg.db")
+if(!require(AnnotationDbi)) BiocManager::install("AnnotationDbi")
+if(!require(ReportingTools)) BiocManager::install("ReportingTools")
+if(!require(RUVSeq)) BiocManager::install("RUVSeq")
+if(!require(sva)) BiocManager::install("sva")
+if(!require(Gviz)) BiocManager::install("Gviz")
+
+if(!require(magrittr)) install.packages("magrittr", dep=TRUE)
+if(!require(dplyr)) install.packages("dplyr", dep=TRUE)
+if(!require(plyr)) install.packages("plyr", dep=TRUE)
+if(!require(ggplot2)) install.packages("ggplot2", dep=TRUE)
+if(!require(pheatmap)) install.packages("pheatmap", dep=TRUE)
+if(!require(RColorBrewer)) install.packages("RColorBrewer", dep=TRUE)
+if(!require(ggbeeswarm)) install.packages("ggbeeswarm", dep=TRUE)
+```
+
+# Resumen
+
+Para este estudio, se tuvo de referencia unas muestras del repositorio (GTEx^1), en éste se hallan datos de un total de 54 tejidos, focalizándose en los datos de expresión RNA-seq en un análisis de tiroides. Consta de tres tipos de infiltración diferente (NIT, SFI, ELI), de los cuales se tomaron 10 muestras aleatorias por cada tipo. Entre los grupos NIT y SFI no hubo alta cantidad de genes expresados diferencialmente, mientras que estos comparados con ELI sí presentaron un alto número de genes sobreexpresados y suprimidos^[https://github.com/EstebanVargasParra/PEC2.git]. 
+
+## Palabras claves
+
+expresión, RNA-seq, genes.
+
+# 1. Introducción
+
+RNA-seq, proporciona una forma rentable de obtener grandes cantidades de datos de transcriptoma de una muestra biológica, para un estudio de interés. Estas técnicas basadas en secuenciación masiva eliminan el ruido introducido por la correcta hibridación de sondas dependiente del diseño empleado, ofrecen un mayor rango dinámico de detección al evitar la saturación por señales de fluorescencia y permiten obtener un panorama más global de los genes activados y/o reprimidos sin restringirse a genes previamente caracterizados @Shin2019
+
+La  tiroides, situada en el cuello, es una de las glándulas endocrinas que producen hormonas, controlando varias actividades del cuerpo, como lo son la velocidad con que se quema calorías, los latidos del corazón, entre otras @HernandezMariaMiltonRendon2019. En el presente estudio se tomaron en cuenta dos tipos  de infiltración en un análisis de tiroides y un grupo sin tejidos filtrados (NIT), siendo los infiltrados, aquellos que tienen ligeros infiltrados focales (SFI) y los que poseen infiltrados linfoides extensos (ELI).
+
+Como objetivo de este estudio, se pretende realizar un análisis comparativo de RNA-seq utilizando paquetes del programa Bioconductor. 
+
+# 2 Materiales
+
+Los materiales de trabajo fueron proporcionados por el aula, éstos venían preprocedados en una tabla de contajes denominada counts y un archivo targets, los cuáles contienen datos múltiples en un total de 54 tejido, tomando de referencia aquellos RNA-seq pertenecientes a un análisis de tiroides donde se comparan tres tipos de infiltración en un total de 292 muestras. 
+
++ Not infiltrated tissues (NIT): 236 muestras
++ Small focal infiltrates (SFI): 42 muestras
++ Extensive lymphoid infiltrates (ELI): 14 muestras
+
+## 2.1 Datos
+
+Para la preparación de los datos, se pretende tomar aleatoriamente 10 por cada grupo, para así proceder a realizar un análisis de expresión diferencial (NIT-SFI, NIT-ELI y SFI-ELI). 
+
+## 2.2 Métodos
+
+Para el siguiente estudio se siguieron los pasos del RNAseq pipeline - Bioconductor, Ricardo Gonzalo Sanz y Alex Sánchez-Pla (24 de mayo, 2020)
+
+## 2.3 Software
+
+El análisis de este trabajo se realizó con la versión de R 3.6.3 (2020-02-09). R es un leguaje para computación, estadísticas y gráficos, el cual proporciona una variedad de técnicas estadísticas y gráficas. R-Studio es una interfaz que facilita el uso, debido que posee un espacio más cómodo  y gráfico. 
+
+## 2.4 Preparación de datos
+
+El primer paso a realizar es cargar los archivos proporcionados (targets y counts), los cuales se enceuntran en formato csv, dentro del repositorio, el mismo al cual llegarán nuestros resultados exportados.
+
+```{r echo=FALSE}
+setwd(".")
+```
+
+El archivo targets que contiene en el nombre del exprimento, nombre de la muestra, grupo de análisis, sitio del cuerpo, tipo de datos moleculares, sexo y nuestro grupo con el cual realizaremos nuestro diseño del experimento.  
+```{r echo=FALSE}
+targets<- read.csv("./targets.csv", header = TRUE, sep = ",")
+head(targets)
+```
+
+En total se tienen un resultados de 292 muestras, de las cuales 236 pertenecen a NIT, 42 a SFI y 14 a ELI. Como propósito de este estudio, se debe seleccionar 10 muestras al azar para cada grupos (un total de 30 muestras en total). Es importante fijar una semilla, con el fin de poder replicar el ensayo y obtener siempre el mismo resultado
+```{r echo=FALSE}
+library(dplyr)
+set.seed(19950605)
+female<-subset(targets, targets$sex=="female")
+male<-subset(targets, targets$sex=="male")
+NITf <- sample_n(female[female$Group=="NIT",], size = 5)
+NITm <- sample_n(male[male$Group=="NIT",], size = 5)
+SFIf <- sample_n(female[female$Group=="SFI",], size = 5)
+SFIm <- sample_n(male[male$Group=="SFI",], size = 5)
+ELIf <- sample_n(female[female$Group=="ELI",], size = 5)
+ELIm <- sample_n(male[male$Group=="ELI",], size = 5)
+target<- data.frame(rbind(NITf, NITm, SFIf, SFIm, ELIf, ELIm))
+target$Group
+```
+
+Por otra parte se administraron los archivos counts, pero para esto es importante observar que aquellos que traen el nombre del transcrito constan al final de "." seguido de un número, el cual es recomendable eliminar para realizar los análisis. 
+```{r echo=FALSE}
+counts <- read.csv("./counts.csv", header = FALSE, sep = ";") 
+counts[1,1]<-NA
+counts$V1<-gsub("\\..*", "", counts$V1, fixed = FALSE)
+counts$V1<-as.character(counts$V1)
+counts$V1[is.na(counts$V1)]<-"Sample_Name"
+head(counts[,1:3])
+```
+
+Por otra parte, el encabezado se tomó como falso, con la idea de transponer la matriz y realizar una intersección, sabiendo que este encabezado posee la misma escritura de los resultados del vector Sample_Name del archivo target (Con la función join del paquete ply obtiene una intersección sin alterar el orden). Además, el archivo counts, desde el momento en el que se sube con un encabezado falso, todos sus valores tomarán carácterísticas cualitativas, por lo cual es necesario convertir la matriz de los conteos de factor a numérica una vez se haya realizado la intersección. 
+```{r echo=FALSE}
+library(plyr)
+rownames(counts)<-counts[,1]
+transpuesta<-t(counts)
+transpuesta<-data.frame(transpuesta)
+transpuesta<-transpuesta[-1,]
+rownames(transpuesta)<- 1:nrow(transpuesta)
+Sample_Name<-target$Sample_Name
+ShortName <-target$ShortName 
+Sample_Name<-data.frame(Sample_Name, ShortName)
+objetivos<- join(Sample_Name, transpuesta)
+objetivos<-objetivos[,c(-1)]
+rownames(objetivos)<-objetivos[,1]
+objetivos<-objetivos[,-1]
+objetivos[sapply(objetivos, is.factor)]<- lapply(objetivos[sapply(objetivos, is.factor)],function(x) as.numeric(as.character(x)))
+tobjetivos<- t(objetivos)
+head(tobjetivos[,1:5])
+```
+
+Para obtener unos resultados con unas etiquetas más sencillas, cambio el nombre de la filas por el nombre del vector Short_Name y posteriormente lo elimino. 
+```{r echo=FALSE}
+rownames(target)<-target[,length(target)]
+target<-target[,-length(target)]
+head(target)
+```
+
+# 3. Objeto DESeqDataSet, la información de muestra y la fórmula de diseño
+Al obtener únicamente la matriz de conteo y la tabla de información de la muestra. Se hace uso de la función DESeqDataSetFromMatrix (paquete DESeq2), permitiendo obtener un ensayo con la información de la muestra y la fórmula del diseño.
+```{r message=FALSE}
+dds <- DESeqDataSetFromMatrix(countData = tobjetivos,
+                                 colData = target,
+                                 design = ~Group)
+dds
+```
+
+## 3.1 Análisis exploratorio y visualización
+
+### 3.1.1 Pre-filtraje del conjunto de datos
+Nuestra matriz de conteo con nuestro DESeqDataSet contiene muchas filas con solo ceros, y adicionalmente muchas filas con solo unos pocos fragmentos en total. Para reducir el tamaño del objeto y aumentar la velocidad de nuestras funciones, podemos eliminar las filas que no tienen o casi no tienen información sobre la cantidad de expresión génica. Aquí aplicamos la regla de filtrado más mínima: eliminar filas del DESeqDataSet que no tienen recuentos, o solo un recuento único en todas las muestras. La ponderación / filtrado adicional para mejorar la potencia se aplica en un paso posterior en el flujo de trabajo. Aun así, este ensayo posee conteos bajos, sin saber qué criterio se puede establecer para aumentar el corte para tener más conteos o dejar todos los que son mayores a 1.
+```{r echo=FALSE}
+nrow(dds)
+dds <- dds[ rowSums(counts(dds)) > 1, ]
+nrow(dds)
+```
+
+### 3.1.2 Transformación estabilizadora de la varianza
+Dado el caso que se realizara un análisis de componente principales con los recuentos normalizados, el resultado de la gráfica tomará aquellos genes con valores de recuentos más altos, dejando de lado los de recuentos bajos. Para evitar esto, se decidió llevarlos valores a escalas logarítmicas, permitiendo que aquellos genes con contenos bajos contribuirán a una cantidad de ruido en la gráfica resultante. 
+
+Para realizar esta transformación se puede realizar con funciones que otorga DESeq2, como lo es vst y rlog, ambas son recomendables, con la diferencia que vst funciona para conjuntos medianos o grandes (n>30) y rlog para conjuntos pequeños (n<30), así, que para el respectivo estudio se implementa el uso de vst. 
+
+```{r echo=FALSE}
+vsd <- vst(dds, blind = FALSE)
+head(assay(vsd), 3)
+head(colData(vsd))
+df<- as_data_frame(assay(vsd)[, 1:2]) %>% mutate(transformation = "vst")
+colnames(df)[1:2] <- c("x", "y")
+ggplot(df, aes(x = x, y = y)) + geom_hex(bins = 80) +
+  coord_fixed() + facet_grid( . ~ transformation)+
+  geom_abline(intercept = 0, slope = 1)
+```
+
+Al ver este diagrama de dispersión en general, una agrupación más cercana de todos los puntos de datos a lo largo de la diagonal indicarían tratamientos que tienen patrones de expresión muy similares en todos los genes, mientras que una mayor difusión de los puntos de datos desde la diagonal indicaría niveles de expresión menos similares.
+
+### 3.1.2 Distancias de las muestras
+El cálculo de la distancia euclidiana otorga la similitud general entre muestras, para garantizar una contribución igual entre todos los genes. Es necesario transponer la matriz, para que las diferentes muestras sean filas de sus argumento y diferentes dimensiones sean columnas.
+
+```{r echo=FALSE}
+sampleDists <- dist(t(assay(vsd)))
+sampleDists
+```
+
+A partir de las distancias, se puede generar un mapa de calor, que agrupa aquellas muestras que mayor similitud presentan.
+
+```{r echo=FALSE}
+library("pheatmap")
+library("RColorBrewer")
+library("ggbeeswarm")
+
+sampleDistMatrix <- as.matrix( sampleDists)
+rownames(sampleDistMatrix) <- paste(rownames(target))
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         col = colors)
+```
+
+Otra forma de visualizar las muestras, es por medio del análisis de componentes principales, el cual ordena las muestras en forma de puntos en un plano 2D, agrupando aquellos que mayor similitud presentan. El resultado obtenido por el PCA, muestra como hay tendencia de que el grupo ELI tenga diferencias respecto a los otros grupos, mientas que entre el grupo NIT y SFI parece haber similitudes.  
+
+```{r echo=FALSE}
+plotPCA(vsd, intgroup ="Group")
+```
+
+# 4. Análisis de expresión diferencial
+El análisis de expresión diferencial se puede canalizar con los recuentos sin procesar. Estimando los factores de tamaño, valore de dispersión por cada gen y el ajuste de modelo lineal generalizado. 
+
+```{r echo=FALSE}
+dds <- DESeq(dds, parallel =TRUE)
+dds
+```
+
+## 4.1 Construcción de tabla de resultados
+
+El objetivo del estudio es realizar una comparación entre los grupos NIT-SFI, NIT-ELI y SFI-ELI. En este orden serán presentados los resultados, además se analizará al tiempo el plotCounts, el cual toma el nombre del gen (en este caso el topGene de cada contraste) y el grupo sobre el cual trazar los recuentos. 
+
+La comparación entre NIT-SFI muestra pocos genes con una diferencias significativa. Tomando sólo 6 como sobreexpresados y 31 como suprimidos, teniendo porcentajes bastante bajos.
+
+```{r echo=FALSE}
+NIT_SFI <- results(dds, contrast = c("Group", "NIT", "SFI"))
+mcols(NIT_SFI, use.names = TRUE)
+summary(NIT_SFI)
+sum(NIT_SFI$padj < 0.1, na.rm=TRUE)
+resSig_NIT_SFI <- subset(NIT_SFI, padj < 0.1)
+head(resSig_NIT_SFI[ order(resSig_NIT_SFI$log2FoldChange, decreasing = TRUE), ])
+topGene_NIT_SFI <- rownames(NIT_SFI)[which.min(NIT_SFI$padj)]
+geneCounts_NIT_SFI <- plotCounts(dds, gene = topGene_NIT_SFI, intgroup =c("Group"),
+                         returnData = TRUE)
+geneCounts_NIT_SFI <- geneCounts_NIT_SFI[1:20,]
+ggplot(geneCounts_NIT_SFI, aes(x = Group, y = count, color = Group, group = Group)) +
+  scale_y_log10() + geom_point(size = 3) + ggtitle("NIT vs SFI")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Por otra parte entre NIT-ELI, los genes con una expresión diferencial significativa fueron más altos que el anterior contraste. Mostrando un número de 2411 genes sobreexpresados y 4349 suprimidos.  
+
+```{r echo=FALSE}
+NIT_ELI <- results(dds, contrast = c("Group", "NIT", "ELI"))
+mcols(NIT_ELI, use.names = TRUE)
+summary(NIT_ELI)
+sum(NIT_ELI$padj < 0.1, na.rm=TRUE)
+resSig_NIT_ELI <- subset(NIT_ELI, padj < 0.1)
+head(resSig_NIT_ELI[ order(resSig_NIT_ELI$log2FoldChange), ])
+head(resSig_NIT_ELI[ order(resSig_NIT_ELI$log2FoldChange, decreasing = TRUE), ])
+topGene_NIT_ELI <- rownames(NIT_ELI)[which.min(NIT_ELI$padj)]
+geneCounts_NIT_ELI <- plotCounts(dds, gene = topGene_NIT_ELI, intgroup = c("Group"),
+                                 returnData = TRUE)
+geneCounts_NIT_ELI <- geneCounts_NIT_ELI[-c(11:20),]
+ggplot(geneCounts_NIT_ELI, aes(x = Group, y = count, color = Group, group = Group)) +
+  scale_y_log10() + geom_point(size = 3) + ggtitle("NIT vs ELI")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Entre los grupos SFI-ELI, la cantidad de genes expresialmente diferenciados es mayor, presentados 1455 sobreexpresados y 2700 suprimidos.
+
+```{r echo=FALSE}
+SFI_ELI <- results(dds, contrast = c("Group", "SFI", "ELI"))
+mcols(SFI_ELI, use.names = TRUE)
+summary(SFI_ELI)
+sum(SFI_ELI$padj < 0.1, na.rm=TRUE)
+resSig_SFI_ELI <- subset(SFI_ELI, padj < 0.1)
+head(resSig_SFI_ELI[ order(resSig_SFI_ELI$log2FoldChange, decreasing = TRUE), ])
+topGene_SFI_ELI <- rownames(SFI_ELI)[which.min(SFI_ELI$padj)]
+geneCounts_SFI_ELI <- plotCounts(dds, gene = topGene_SFI_ELI, intgroup = c("Group"),
+                                 returnData = TRUE)
+geneCounts_SFI_ELI <- geneCounts_SFI_ELI[-c(1:10),]
+ggplot(geneCounts_SFI_ELI, aes(x = Group, y = count, color = Group, group = Group)) +
+  scale_y_log10() + geom_point(size = 3) + ggtitle("SFI vs ELI")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Adelantándonos a las conclusiones, entre NIT y SFI las diferencias son pocas, algo que se observó anteriormente con el HeatMap y el PCA, mientras que el grupo ELI, posee grandes diferencias de genes expresados diferencialmente respectos a los demás.
+
+## 4.2 MA-plot
+Este tipo de gráfico, realiza la comparación entre dos grupos, donde se visualiza como un diagrama de dispersión con cambio de pliegue de base 2 a lo largo del eje Y y expresión media normalizada a lo largo del eje X. Aquellos datos que se encuentren extremos sobre el eje Y, ya sea hacia arriba o abajo del cero, significa que son genes altamente diferenciados. 
+
+Basados en los resultados anteriores, las diferencias más altas se denotan entre NIT con los otros grupos, mientras que entre NIT y SFI los genes diferencialmente expresados fueron menores.  
+
+```{r echo=FALSE}
+par(mfrow=c(3,1))
+res_NIT_SFI <- lfcShrink(dds, contrast =c("Group", "NIT", "SFI"), res =NIT_SFI)
+plotMA(res_NIT_SFI, ylim = c(-5,5), main="NIT-SFI")
+res_NIT_ELI <- lfcShrink(dds, contrast =c("Group", "NIT", "ELI"), res =NIT_ELI)
+plotMA(res_NIT_ELI, ylim = c(-5, 5), main="NIT-ELI")
+res_SFI_ELI <- lfcShrink(dds, contrast =c("Group", "SFI", "ELI"), res =SFI_ELI)
+plotMA(res_SFI_ELI, ylim = c(-5, 5), main=("SIF-ELI"))
+dev.off()
+```
+
+## 4.3 Agrupación de genes
+
+A partir de los datos obtenidos en la transformación estabilizadora de la varianza (vts), se hace un mapa de calor donde se determina la cantidad en que cada gen se desvía en una muestra específica del promedio del gen en todas las muestras. Para la demostración, se toman los 20 genes con una mayor varianza entre las muestras. 
+
+```{r echo=FALSE}
+library("genefilter")
+topVarGenes <- head(order(rowVars(assay(vsd)), decreasing = TRUE), 20)
+
+mat  <- assay(vsd)[topVarGenes,]
+mat  <- mat - rowMeans(mat)
+anno <- as.data.frame(colData(vsd)[, c("Group","body_site")])
+pheatmap(mat, annotation_col =anno)
+```
+
+## 5. Anotación y exportación de resultados
+
+Los resultados sólo contienen los ID de genes de ENSEMBL, pero los nombres alternativos puede ser más informativos para la interpretación. Se usó el paquete de anotación del organismo ("org") para *Homo Sapiens*, organizado en un paquete de base de datos de AnnotationDbi ("db"), usando ID de genes de Entrez ("eg") como clave principal.Para la exportación de los resultados, a través del paquete Bioconductor ReportingTools, el cual genera documentos html dinámicos, incluido enlaces a bases de datos externas utilizando identificadores de genes y diagramas de caja que resumen los recuentos normalizados entre los grupos.
+
+```{r echo=FALSE}
+library("org.Hs.eg.db")
+library("AnnotationDbi")
+columns(org.Hs.eg.db)
+
+res_NIT_SFI$symbol <- mapIds(org.Hs.eg.db,
+                     keys=row.names(res_NIT_SFI),
+                     column="SYMBOL",
+                     keytype="ENSEMBL",
+                     multiVals="first")
+res_NIT_SFI$entrez <- mapIds(org.Hs.eg.db,
+                     keys=row.names(res_NIT_SFI),
+                     column="ENTREZID",
+                     keytype="ENSEMBL",
+                     multiVals="first")
+resOrdered_NIT_SFI <- res_NIT_SFI[order(res_NIT_SFI$pvalue),]
+head(resOrdered_NIT_SFI)
+resOrderedDF_NIT_SFI <- as.data.frame(resOrdered_NIT_SFI)
+
+res_NIT_ELI$symbol <- mapIds(org.Hs.eg.db,
+                             keys=row.names(res_NIT_ELI),
+                             column="SYMBOL",
+                             keytype="ENSEMBL",
+                             multiVals="first")
+res_NIT_ELI$entrez <- mapIds(org.Hs.eg.db,
+                             keys=row.names(res_NIT_ELI),
+                             column="ENTREZID",
+                             keytype="ENSEMBL",
+                             multiVals="first")
+resOrdered_NIT_ELI <- res_NIT_ELI[order(res_NIT_ELI$pvalue),]
+head(resOrdered_NIT_ELI)
+resOrderedDF_NIT_ELI <- as.data.frame(resOrdered_NIT_ELI)
+
+
+res_SFI_ELI$symbol <- mapIds(org.Hs.eg.db,
+                             keys=row.names(res_SFI_ELI),
+                             column="SYMBOL",
+                             keytype="ENSEMBL",
+                             multiVals="first")
+res_SFI_ELI$entrez <- mapIds(org.Hs.eg.db,
+                             keys=row.names(res_SFI_ELI),
+                             column="ENTREZID",
+                             keytype="ENSEMBL",
+                             multiVals="first")
+resOrdered_SFI_ELI <- res_SFI_ELI[order(res_SFI_ELI$pvalue),]
+head(resOrdered_SFI_ELI)
+resOrderedDF_SFI_ELI <- as.data.frame(resOrdered_SFI_ELI)
+
+
+library("ReportingTools")
+htmlRep_NIT_SFI <- HTMLReport(shortName="report_NIT_SFI", title="My report NIT vs SFI", reportDirectory=".")
+publish(resOrderedDF_NIT_SFI, htmlRep_NIT_SFI)
+url_NIT_SFI <- finish(htmlRep_NIT_SFI)
+
+htmlRep_NIT_ELI <- HTMLReport(shortName="report_NIT_ELI", title="My report NIT vs ELI", reportDirectory=".")
+publish(resOrderedDF_NIT_ELI, htmlRep_NIT_ELI)
+url_NIT_ELI <- finish(htmlRep_NIT_ELI)
+
+htmlRep_SFI_ELI <- HTMLReport(shortName="report_SFI_ELI", title="My report SFI vs ELI", reportDirectory=".")
+publish(resOrderedDF_SFI_ELI, htmlRep_SFI_ELI)
+url_SFI_ELI <- finish(htmlRep_SFI_ELI)
+```
+
+# 6. Análisis de significancia biológica
+
+Con la lista de genes diferencialmente expresados entre dos condiciones, se busca establecer si las funciones, procesos biológicos o vías moleculares que los caracterizan aparecen en esta lista con más frecuencia que entre el resto de los genes analizado @Gonzalo2020, determinando diferencias concordantes estadísticamente significativas entre dos estados biológicos.
+
+Con el paquete clusterProfiler, realiza análisis estadístico y visualización de perfiles funcionales para genes y grupos de genes El paquete implementa métodos para analizar y visualizar perfiles funcionales de genes y grupos de genes.
+
+Para este estudio se usó la función groupGo, que da la opción de elegir subontologías, en este caso se trabajó con "BP" que hacer referencias a procesos biológicos. También se puede usar "CC" que son componente celulares y "MF" que son funciones moleculares. Como los resultados obtenidos ELI comparados con los otros grupos son de gran tamaño, para mostrar la red de este análisis, sólo se tomó la comparación entre NIT-SFI. 
+
+```{r echo=FALSE}
+library(clusterProfiler)
+library(DOSE)
+OrgDB<- org.Hs.eg.db
+NIT_SFI_plot<- subset(resOrderedDF_NIT_SFI, padj < 0.1)
+enrich_NIT_SFI <- groupGO(gene =NIT_SFI_plot$entrez,
+                          OrgDb = OrgDB,
+                          keyType = "ENTREZID",
+                          ont = "BP",
+                          readable = TRUE)
+head(enrich_NIT_SFI)
+cnetplot(enrich_NIT_SFI, categorySize = "geneNum")
+barplot(enrich_NIT_SFI, showCategory = 15, font.size = 7, title = "Pathway Analysis for NIT-SFI",)
+
+
+NIT_ELI_plot<-subset(resOrderedDF_NIT_ELI, padj < 0.1)
+enrich_NIT_ELI <- groupGO(gene =NIT_ELI_plot$entrez,
+                          OrgDb = OrgDB,
+                          keyType = "ENTREZID",
+                          ont = "BP",
+                          readable = TRUE)
+#head(enrich_NIT_ELI)
+#cnetplot(enrich_NIT_ELI, categorySize = "geneNum")
+barplot(enrich_NIT_ELI, showCategory = 15, font.size = 7, title = "Pathway Analysis for NIT-ELI",)
+
+
+SFI_ELI_plot<-subset(resOrderedDF_SFI_ELI, padj < 0.1)
+enrich_SFI_ELI <- groupGO(gene =SFI_ELI_plot$entrez,
+                          OrgDb = OrgDB,
+                          keyType = "ENTREZID",
+                          ont = "BP",
+                          readable = TRUE)
+#head(enrich_SFI_ELI)
+#cnetplot(enrich_SFI_ELI, categorySize = "geneNum")
+barplot(enrich_SFI_ELI, showCategory = 15, font.size = 7, title = "Pathway Analysis for SFI-ELi",)
+```
+
+# Conclusiones
+
++ Una debilidad de este análisis va relacionada con los conteos, donde es difícil establecer un rango que se considere adecuado para saber cuál es un valor mínimo para realizar la selección.
++ Los grupos de comparación NIT y SFI presentan poca diferencia en expresión génica
++ El grupo ELI contiene una alta cantidad de genes expresados diferencialmente respecto a los grupos NIT y SFI.
+
+# Bibliografía
