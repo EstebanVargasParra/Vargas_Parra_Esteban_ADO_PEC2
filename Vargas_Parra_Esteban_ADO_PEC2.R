@@ -257,6 +257,7 @@ head(resOrdered_SFI_ELI)
 resOrderedDF_SFI_ELI <- as.data.frame(resOrdered_SFI_ELI)
 
 
+
 library("ReportingTools")
 htmlRep_NIT_SFI <- HTMLReport(shortName="report_NIT_SFI", title="My report NIT vs SFI",
                       reportDirectory=".")
