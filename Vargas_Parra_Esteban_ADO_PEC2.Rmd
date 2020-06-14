@@ -47,7 +47,7 @@ if(!require(ggbeeswarm)) install.packages("ggbeeswarm", dep=TRUE)
 
 # Resumen
 
-Para este estudio, se tuvo de referencia unas muestras del repositorio (GTEx^1), en éste se hallan datos de un total de 54 tejidos, focalizándose en los datos de expresión RNA-seq en un análisis de tiroides. Consta de tres tipos de infiltración diferente (NIT, SFI, ELI), de los cuales se tomaron 10 muestras aleatorias por cada tipo. Entre los grupos NIT y SFI no hubo alta cantidad de genes expresados diferencialmente, mientras que estos comparados con ELI sí presentaron un alto número de genes sobreexpresados y suprimidos^[https://github.com/EstebanVargasParra/PEC2.git]. 
+Para este estudio, se tuvo de referencia unas muestras del repositorio (GTEx^1), en éste se hallan datos de un total de 54 tejidos, focalizándose en los datos de expresión RNA-seq en un análisis de tiroides. Consta de tres tipos de infiltración diferente (NIT, SFI, ELI), de los cuales se tomaron 10 muestras aleatorias por cada tipo. Entre los grupos NIT y SFI no hubo alta cantidad de genes expresados diferencialmente, mientras que estos comparados con ELI sí presentaron un alto número de genes sobreexpresados y suprimidos^[https://github.com/EstebanVargasParra/Vargas_Parra_Esteban_ADO_PEC2.git]. 
 
 ## Palabras claves
 
